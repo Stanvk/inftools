@@ -8,6 +8,7 @@ def calc_flow2(
     plot: Annotated[str, typer.Option("-plot", help="Plot the flow for those paths, string of spaced idxes")]="",
     toml: Annotated[str, typer.Option("-toml", help="The .toml input file defining the orderparameter")] = "infretis.toml",
     log: Annotated[str, typer.Option("-log", help="The .log file to read path numbers")] = "sim.log",
+    save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     """
     Calculates and plots the flow of individual replica across ensembles.
@@ -17,6 +18,8 @@ def calc_flow2(
     import numpy as np
     import tomli
     import matplotlib.pyplot as plt
+
+    from inftools.misc.plot_helper import show_or_save
 
     with open(toml, "rb") as toml_file:
         config = tomli.load(toml_file)
@@ -95,6 +98,6 @@ def calc_flow2(
             plt.ylabel(f"Ensemble")
             plt.ylim([0, n_ensembles])
             plt.legend()
-        plt.show()
+        show_or_save(save)
 
     return flow_map

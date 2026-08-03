@@ -12,9 +12,11 @@ def plot_max_op(
     data: Annotated[str, typer.Option("-data")] = "infretis_data.txt",
     toml: Annotated[str, typer.Option("-toml")] = "infretis.toml",
     weights: Annotated[bool, typer.Option("-weights")] = False,
+    save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     """Plots the max order parameter for paths in an certain ensemble."""
     from inftools.misc.tomlreader import infretis_data_reader
+    from inftools.misc.plot_helper import show_or_save
     import numpy as np
     import matplotlib.pyplot as plt
     import tomli
@@ -47,4 +49,4 @@ def plot_max_op(
     else:
         plt.scatter(list(range(len(data['op']))), data['op'], color=f'C0')
 
-    plt.show()
+    show_or_save(save)

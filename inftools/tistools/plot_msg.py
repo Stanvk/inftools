@@ -7,6 +7,7 @@ def plot_msg(
     toml: Annotated[str, typer.Option("-toml")] = "infretis.toml",
     add_markers: Annotated[bool, typer.Option("--add_markers",
         help = "Also plot markers on discrete phasepoints")] = False,
+    save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
 ):
     """Plot the order printed in the worker*/msg* files, so we
     can visualize the progress of the shooting moves.
@@ -21,6 +22,7 @@ def plot_msg(
     import numpy as np
 
     from inftools.misc.infinit_helper import read_toml
+    from inftools.misc.plot_helper import show_or_save
 
     intfs = []
     # if toml, plot interfaces
@@ -124,6 +126,6 @@ def plot_msg(
                 axes[i].axhline(cap, color="r", ls="--")
 
     if workers > 0:
-        plt.show()
+        show_or_save(save)
     else:
         print("Not in the root infretis simulation folder!")

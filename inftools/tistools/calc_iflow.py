@@ -8,6 +8,7 @@ import typer
 def calc_iflow(
     plot: Annotated[str, typer.Option("-plot", help="Plot the flow for those paths, string of spaced idxes")]="",
     log: Annotated[str, typer.Option("-log", help="The .log file to read path numbers")] = "sim.log",
+    save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     """
     Calculates and plots the flow of individual replica across ensembles.
@@ -21,6 +22,7 @@ def calc_iflow(
     # plt.style.use('science')
 
     from inftools.misc.misc import read_log
+    from inftools.misc.plot_helper import show_or_save
     from inftools.tistools.max_op import COLS
 
     for idx0, rep in enumerate([int(i) for i in plot.split(" ")]):
@@ -46,5 +48,8 @@ def calc_iflow(
     plt.xlabel("MC Moves")
     plt.ylabel("Ensemble")
     plt.ylim([0, None])
-    plt.savefig("iflow.png")
-    plt.show()
+    if save:
+        show_or_save(save)
+    else:
+        plt.savefig("iflow.png")
+        plt.show()

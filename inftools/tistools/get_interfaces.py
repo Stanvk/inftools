@@ -20,6 +20,9 @@ def estimate_interfaces2(
     plot: Annotated[
         bool, typer.Option("-plot", help="Time from nskip")
     ] = False,
+    save: Annotated[
+        str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")
+    ] = "",
 ):
     """
     Estimate the interface positions from Pcross.txt by linearizing the curve.
@@ -34,6 +37,7 @@ def estimate_interfaces2(
     from inftools.misc.infinit_helper import (
         estimate_interface_positions,
     )
+    from inftools.misc.plot_helper import show_or_save
 
     if plot:
         import matplotlib.pyplot as plt
@@ -80,7 +84,7 @@ def estimate_interfaces2(
             a.axvline(inter, c="k", lw=1)
         a.set(yscale="log")
         plt.legend()
-        plt.show()
+        show_or_save(save)
 
 
 def estimate_interfaces(
@@ -96,6 +100,9 @@ def estimate_interfaces(
     plot: Annotated[
         bool, typer.Option("-plot", help="Time from nskip")
     ] = False,
+    save: Annotated[
+        str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")
+    ] = "",
 ):
     """
     Estimate interfaces from Pcross.txt
@@ -114,6 +121,8 @@ def estimate_interfaces(
     import matplotlib.pyplot as plt
     import numpy as np
     from scipy.optimize import curve_fit, minimize
+
+    from inftools.misc.plot_helper import show_or_save
 
     x = np.loadtxt(i)
 
@@ -239,4 +248,4 @@ def estimate_interfaces(
         for inter in interfaces:
             a.axvline(inter, c="k", lw=1)
         a.set(yscale="log")
-        plt.show()
+        show_or_save(save)

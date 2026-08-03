@@ -5,11 +5,14 @@ def check_data(
     data: Annotated[str, typer.Option("-data")] = "infretis_data.txt",
     toml: Annotated[str, typer.Option("-toml")] = "infretis.toml",
     plot: Annotated[bool, typer.Option("-plot")] = False,
+    save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     """Check that all ensembles [i] contain paths that cross the interface of the next ensemble [i+1]. Can be used to plot the maximum OP value of all paths within each ensemble."""
     import numpy as np
     import matplotlib.pyplot as plt
     import tomli
+
+    from inftools.misc.plot_helper import show_or_save
 
     with open(toml, "rb") as toml_file:
         toml_dict = tomli.load(toml_file)
@@ -64,4 +67,4 @@ def check_data(
             print(f"Ensemble {ens} is missing paths that cross interface {ens_intf+1} with value {M}")
 
     if plot:
-        plt.show()
+        show_or_save(save)

@@ -5,6 +5,7 @@ from typing import Annotated, Optional
 def calc_simtime(
     log: Annotated[str, typer.Option("-log")] = "sim.log",
     plot: Annotated[bool, typer.Option("-plot")] = True,
+    save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     """Calculate the total simulation wall time while
     considering restarts. Basically by calculating the delta time."""
@@ -12,6 +13,8 @@ def calc_simtime(
     import matplotlib.pyplot as plt
     import numpy as np
     import time
+
+    from inftools.misc.plot_helper import show_or_save
 
     from datetime import datetime
     format_str = "%Y.%m.%d %H:%M:%S"
@@ -50,7 +53,7 @@ def calc_simtime(
             # plt.axhline(pstart, color="k", ls="--")
         plt.ylabel("Shooting Attempts")
         plt.xlabel("Time [Days]")
-        plt.show()
+        show_or_save(save)
 
     print(f"Total Wall Time: {np.sum(paths)/3600/24:.01f} Days")
     print(f"Total Restarts: {len(tstarts)-1}")

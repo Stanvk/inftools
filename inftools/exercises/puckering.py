@@ -505,11 +505,14 @@ def plot_order(
         toml: Annotated[str, typer.Option("-toml", help="The .toml input file for reading the interfaces (e.g. 'infretis.toml')")],
         xy: Annotated[Tuple[int, int], typer.Option("-xy", help="The indices of the columns to plot (default 0 1)")] = (0, 1),
         skip: Annotated[bool, typer.Option("-skip" , help="skip initial load paths")] = False,
+        save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     "Plot the order parameter of all paths from an infretis simulation."
     import tomli
     import matplotlib.pyplot as plt
     import numpy as np
+
+    from inftools.misc.plot_helper import show_or_save
 
     # read interfaces from the .toml file
     with open(toml, "rb") as toml_file:
@@ -571,4 +574,4 @@ def plot_order(
         lw=lw,
     )
 
-    plt.show()
+    show_or_save(save)

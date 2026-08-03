@@ -7,6 +7,7 @@ def calc_flow_op(
     toml: Annotated[str, typer.Option("-toml", help="The .toml input file defining the orderparameter")] = "infretis.toml",
     log: Annotated[str, typer.Option("-log", help="The .log file to read path numbers")] = "sim.log",
     load: Annotated[str, typer.Option("-load", help="The trajectory load folder containing order.txt")] = "load",
+    save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     """
     Plots the order.txt for a single replica as it visits different ensembles.
@@ -19,6 +20,7 @@ def calc_flow_op(
 
     from inftools.tistools.flow2 import calc_flow2
     from inftools.misc.infinit_helper import read_toml
+    from inftools.misc.plot_helper import show_or_save
 
     intfs = read_toml(toml)["simulation"]["interfaces"]
     # fig, axs = plt.subplots(1, 2, figsize=(10.5, 4.0))
@@ -43,5 +45,5 @@ def calc_flow_op(
             continue
     axs[1].set_xlabel("Subcycles")
     axs[1].set_ylabel("Order Parameter")
-    plt.show()
+    show_or_save(save)
 

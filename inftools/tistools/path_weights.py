@@ -10,7 +10,8 @@ def get_path_weights(
     nskip: Annotated[ int, typer.Option( "-nskip", help="Skip the first nskip entries of the infretis_data.txt file",), ] = 0,
     plotP: Annotated[ bool, typer.Option( "-plotP", help="If true plot the binless crossing probability"), ] = False,
     outP: Annotated[ str, typer.Option( "-outP", help="Write the binless WHAM crossing probability to outP"), ] = "",
-    overw: Annotated[ bool, typer.Option("-O", help="Force overwriting of files") ] = False,):
+    overw: Annotated[ bool, typer.Option("-O", help="Force overwriting of files") ] = False,
+    save: Annotated[ str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.") ] = "",):
     """Calculate the unbiased weight for paths in the plus ensembles.
 
     The weights can be used to calculate observables as <O> = sum(wi*Oi), for
@@ -118,10 +119,12 @@ def get_path_weights(
     if plotP:
         import matplotlib.pyplot as plt
 
+        from inftools.misc.plot_helper import show_or_save
+
         plt.plot(res_x, res_y)
         plt.yscale("log")
         for intf in interfaces:
             plt.axvline(intf, c="k")
-        plt.show()
+        show_or_save(save)
     if outP:
         return pcross

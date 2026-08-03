@@ -5,6 +5,7 @@ import typer
 def sim_acc(
     log: Annotated[str, typer.Option("-log")] = "sim.log",
     toml: Annotated[str, typer.Option("-toml")] = "infretis.toml",
+    save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     """Calculates and plots the acceptance rate of MC shooting moves
     for individual ensembles.
@@ -12,6 +13,7 @@ def sim_acc(
     import os
     import matplotlib.pyplot as plt
     from inftools.misc.infinit_helper import read_toml
+    from inftools.misc.plot_helper import show_or_save
     import numpy as np
     enss = {}
     with open(log, "r") as read:
@@ -43,4 +45,4 @@ def sim_acc(
     plt.ylabel("Acceptance probability [%]")
     plt.legend()
     plt.ylim([0, 105])
-    plt.show()
+    show_or_save(save)

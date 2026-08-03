@@ -9,6 +9,7 @@ def calc_flow(
     toml: Annotated[str, typer.Option("-toml", help="The .toml input file defining the orderparameter")] = "infretis.toml",
     log: Annotated[str, typer.Option("-log", help="The .log file to read path numbers")] = "sim.log",
     out: Annotated[str, typer.Option("-out", help="The output of the analysis")] = "",
+    save: Annotated[str, typer.Option("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     """
     Keep track of which parent paths are in which ensemble after each MC move.
@@ -27,6 +28,8 @@ def calc_flow(
     import numpy as np
     import tomli
     import matplotlib.pyplot as plt
+
+    from inftools.misc.plot_helper import show_or_save
 
     plot = [int(i) for i in plot.split(' ')]
 
@@ -138,4 +141,4 @@ def calc_flow(
             plt.axhline(0, c = "k")
             plt.axhline(n_ensembles - 1, c = "k")
             plt.legend()
-            plt.show()
+            show_or_save(save)

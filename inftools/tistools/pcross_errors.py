@@ -8,6 +8,7 @@ def pcross_errors(
     nblock: Atd[int, Opt("-nblock", help="minimum number of blocks for error analysis, see wham")] = 5,
     plot: Atd[bool, Opt(help="plot results")] = True,
     ref: Atd[str, Opt("-ref", help="Reference wham/ folder for comparison") ] = "",
+    save: Atd[str, Opt("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
     ):
     """Estimate error-bars of a Pcross curve from a path weights file.
 
@@ -25,6 +26,7 @@ def pcross_errors(
     import tomli
     import numpy as np
     from inftools.analysis.rec_error import rec_block_errors
+    from inftools.misc.plot_helper import show_or_save
     if plot:
         import matplotlib.pyplot as plt
         f,ax = plt.subplots(2,2,figsize=(6.5,6))
@@ -96,6 +98,6 @@ def pcross_errors(
             a1.plot(errP0[:,0]-1,errP0[:,-1],label="reference",c="k",ls="--")
             a0.legend()
         f.tight_layout()
-        plt.show()
+        show_or_save(save)
     else:
         return dlambda, Pcross, errs

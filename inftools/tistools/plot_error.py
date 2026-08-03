@@ -5,9 +5,10 @@ from typing import Annotated as And
 def plot_error(
     wham: And[str,  Opt("-wham", help="wham folder")] = "wham",
     frac: And[float,  Opt("-frac", help="From what frac of the data to take the average from")] = 0.5,
+    save: And[str, Opt("-save", help="Save the figure to this filename (e.g. plot.png) instead of calling plt.show(). Useful on headless compute nodes.")] = "",
 
     ):
-    """Plot the wham folder's running error with an estimated error based 
+    """Plot the wham folder's running error with an estimated error based
     on the last fraction of the running error.
     """
     import numpy as np
@@ -15,6 +16,7 @@ def plot_error(
     import os
 
     from inftools.misc.calc_help import estimate_error
+    from inftools.misc.plot_helper import show_or_save
 
     # plot the rate related errors in one fig
     # and the individual ensemble plocs in the other
@@ -44,4 +46,4 @@ def plot_error(
         axs[1].axhline(err, color=f"C{idx}")
 
     axs[0].legend()
-    plt.show()
+    show_or_save(save)
