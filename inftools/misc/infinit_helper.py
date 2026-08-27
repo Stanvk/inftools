@@ -396,8 +396,24 @@ def update_toml_interfaces(config):
             print("* Removing an interface because it landed on intf B")
             intf_tmp.pop(idx)
 
-    config["simulation"]["interfaces"] =intf[:1] +  intf_tmp + intf[-1:]
-    config["simulation"]["shooting_moves"] = sh_moves = ["sh", "sh"] + ["wf" for i in range(len(intf)-2)]
+    # Robustness: a (near-)flat OP can leave intf_tmp non-monotonic -- the
+    # intf[-2] cap can drop below its neighbours, or the raw crammed values are
+    # kept when rounding collapses below n_workers. Enforce a strictly-
+    # increasing, unique interior between A and B (spaced >= lamres) and size
+    # shooting_moves to match, so check_config's "interfaces not sorted" and an
+    # interfaces/shooting_moves length mismatch can never fire.
+    lo, hi = float(intf[0]), float(intf[-1])
+    clean = []
+    for v in sorted(float(x) for x in intf_tmp):
+        if lo < v < hi and (not clean or v >= clean[-1] + lamres):
+            clean.append(v)
+    if not clean:
+        print("*** No valid interior interfaces after sanitising a flat OP; "
+              "continuing with the same interfaces.")
+        config["infinit"]["prev_Pcross"] = float(min(Ptot, 1.0))
+        return
+    config["simulation"]["interfaces"] = intf[:1] + clean + intf[-1:]
+    config["simulation"]["shooting_moves"] = ["sh", "sh"] + ["wf"] * len(clean)
 
 def update_toml(config):
     config0 = read_toml("infretis.toml")
