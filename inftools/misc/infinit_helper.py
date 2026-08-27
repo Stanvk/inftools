@@ -151,6 +151,99 @@ def run_infretis_ext(steps):
 
     return True
 
+
+def _rewrite_order_txt(order_file, path):
+    """Rewrite order.txt from a recomputed path (current-net q values).
+
+    Consumers that read order.txt directly -- notably the active-path reuse in
+    set_active_paths, which takes ``max(order[:, 1])`` -- would otherwise see
+    the q written when the path was generated (an older net). Only q (the first
+    order component) changed; the features are config-only and are written back
+    unchanged. The comment header and the OrderPathFormatter layout are kept,
+    and the file is left untouched on any row-count mismatch.
+    """
+    import pathlib as pl
+
+    order_file = pl.Path(order_file)
+    if not order_file.exists() or not path.phasepoints:
+        return
+    with open(order_file, "r", encoding="utf-8") as fh:
+        orig = fh.readlines()
+    header = [ln for ln in orig if ln.startswith("#")]
+    ndata = sum(1 for ln in orig if ln.strip() and not ln.startswith("#"))
+    if ndata != len(path.phasepoints):
+        return
+    lines = list(header)
+    for i, pp in enumerate(path.phasepoints):
+        row = ["{:>10d}".format(i)]
+        row += ["{:>12.6f}".format(float(v)) for v in pp.order]
+        lines.append(" ".join(row) + "\n")
+    tmp = order_file.with_suffix(order_file.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.writelines(lines)
+    tmp.replace(order_file)
+
+
+def refresh_datafile_maxop(data_file, load_dir, order_function):
+    """Refresh stored paths' order values from the current order function.
+
+    For each path in the data file, the max-op (third) column is recomputed and
+    the path's order.txt is rewritten with the current-net q (via
+    ``_rewrite_order_txt``), so both the crossing probability and the
+    active-path reuse rest on the same, current order parameter. The data-file
+    layout is preserved line-by-line; lines whose path directory no longer
+    exists are left unchanged.
+    """
+    import pathlib as pl
+
+    from infretis.classes.path import load_path
+
+    data_file = pl.Path(data_file)
+    if not data_file.exists():
+        return False
+
+    load_dir = pl.Path(load_dir)
+    tmp_file = data_file.with_suffix(data_file.suffix + ".tmp")
+    updated = False
+
+    with open(data_file, "r", encoding="utf-8") as read, open(
+        tmp_file, "w", encoding="utf-8"
+    ) as write:
+        for line in read:
+            if not line.strip() or line.lstrip().startswith("#"):
+                write.write(line)
+                continue
+
+            cols = line.rstrip("\n").split()
+            try:
+                pnumber = int(cols[0])
+            except (ValueError, IndexError):
+                write.write(line)
+                continue
+
+            path_dir = load_dir / str(pnumber)
+            if not path_dir.exists():
+                write.write(line)
+                continue
+
+            try:
+                path = load_path(str(path_dir), order_function=order_function)
+            except (FileNotFoundError, AssertionError, ValueError):
+                write.write(line)
+                continue
+
+            cols[2] = f"{path.ordermax[0]:12.6f}"
+            if hasattr(order_function, "recompute_order"):
+                _rewrite_order_txt(path_dir / "order.txt", path)
+            write.write("\t".join(cols) + "\n")
+            updated = True
+
+    if updated:
+        tmp_file.replace(data_file)
+    else:
+        tmp_file.unlink(missing_ok=True)
+    return updated
+
 def update_toml_interfaces(config):
     """Update the interface positions from crossing probability.
 
@@ -160,10 +253,24 @@ def update_toml_interfaces(config):
     """
     from inftools.tistools.path_weights import get_path_weights
     from inftools.tistools.combine_results import combine_data
+    from infretis.classes.orderparameter import create_orderparameter
     import numpy as np
     config1 = read_toml("restart.toml")
     # current infinit step
     cstep = config1["infinit"]["cstep"]
+    order_function = create_orderparameter(config1)
+    # per-iteration committor training: a single process trains the net from
+    # the aggregated shot log, then the recompute + interface update below
+    # rest on this one current net (multi-worker safe, fixed OP per iteration)
+    if hasattr(order_function, "train_from_shots"):
+        shots_path = pl.Path(
+            config1["output"].get("data_dir", "./")
+        ) / "shots.jsonl"
+        info = order_function.train_from_shots(str(shots_path))
+        print(
+            f"committor: trained on {info['n_shots']} shots "
+            f"({info['n_samples']} samples), loss {info['loss']}"
+        )
     tomls = []
     datas = []
     skip = []
@@ -173,6 +280,16 @@ def update_toml_interfaces(config):
         tomls += [f"combo_{cstep}.toml"]
         datas += [f"combo_{cstep}.txt"]
         skip += [0]
+        refresh_datafile_maxop(
+            f"combo_{cstep}.txt",
+            config1["simulation"].get("load_dir", "load"),
+            order_function,
+        )
+    refresh_datafile_maxop(
+        config1["output"]["data_file"],
+        config1["simulation"].get("load_dir", "load"),
+        order_function,
+    )
     combine_data(
             tomls = tomls + ["restart.toml"],
             datas = datas + [config1["output"]["data_file"]],
@@ -218,6 +335,21 @@ def update_toml_interfaces(config):
     x = x[:zero_idx[-1] + 1]
 
     Ptot = p[-1]
+    # A (near-)flat order parameter cannot be turned into interfaces yet: either
+    # the largest order sampled is below the resolution, or the crossing
+    # probability never drops (Ptot -> 1 => pL -> 1 => log(pL)=0, so the
+    # interface estimate divides by zero -> num_ens = int(NaN)). Keep the
+    # current interfaces and keep sampling so the OP can learn the barrier;
+    # this is the expected cold start for an online committor.
+    _lamres = config["infinit"]["lamres"]
+    if (not np.isfinite(Ptot)) or Ptot >= 1.0 or (x[-1] - x[0]) <= _lamres:
+        print("*** Order parameter too flat to place interfaces "
+              f"(max order {x[-1]:.3g}, Ptot {Ptot:.3g}); "
+              "continuing with the same interfaces.")
+        config["infinit"]["prev_Pcross"] = (
+            float(min(Ptot, 1.0)) if np.isfinite(Ptot) else 0.0
+        )
+        return
     num_ens = config["infinit"].get("num_ens", False)
     if num_ens:
         interfaces, pL_used = estimate_interface_positions(x, p, num_ens=num_ens)

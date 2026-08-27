@@ -6,6 +6,164 @@ from inftools.misc.infinit_helper import *
 
 # export _TYPER_STANDARD_TRACEBACK=1
 
+"""Drop-in addition for inftools/tistools/initial_paths.py.
+
+Paste the function below into that file (it needs the `read_toml` that is
+already star-imported there from inftools.misc.infinit_helper). No registration
+is needed -- get_mapper() picks up every function defined in tistools/*.py.
+
+Do NOT add module-level helper functions to that file: they would each become
+an `inft` subcommand. This is why everything here lives inside the function.
+
+The imports at the top of this file mirror initial_paths.py so the module can
+be exercised standalone before dropping it in.
+"""
+import os
+from typing import Annotated
+
+import typer
+from inftools.misc.infinit_helper import *
+
+
+def initial_paths_from_reverse(
+    path: Annotated[str, typer.Option("-path", help="Directory of a reactive path from the forward simulation, e.g. 'load/5627'.")],
+    toml: Annotated[str, typer.Option("-toml", help="The .toml file of the reverse simulation. 'interfaces' and 'load_dir' are read from it.")] = "infretis.toml",
+    shift: Annotated[float, typer.Option("-shift", help="Mirror constant of the order parameter, op_rev = shift - op. Defaults to interfaces[0] + interfaces[-1].")] = None,
+    ens: Annotated[str, typer.Option("-ens", help="Ensembles to seed, given as 'first:last' (inclusive). Defaults to every plus ensemble, leaving [0-] untouched.")] = "",
+    keep_op: Annotated[bool, typer.Option(help="Append the forward order parameter as the last column of order.txt, so both simulations can be histogrammed on the same collective variable.")] = True,
+    copy: Annotated[bool, typer.Option(help="Copy the trajectory frames into every ensemble directory instead of symlinking them. They are usually far too large to copy.")] = False,
+    ):
+    """Seed a reverse (B->A) simulation with a reactive path from the forward
+
+    (A->B) simulation. A reactive path spans the whole barrier, so time-reversed
+    it is a valid initial path in *every* plus ensemble of the reverse
+    simulation at once. This skips the barrier-climbing phase of 'infinit'.
+
+    Only the bookkeeping files are touched: infretis stores velocity reversal as
+    a per-frame flag in the 'vel' column of traj.txt, so the trajectory files
+    are reused as they are. The order parameter is remapped analytically as
+    op_rev = shift - op, which must agree with the mirrored orderparameter class
+    the reverse simulation is configured with.
+
+    The [0-] ensemble is not seeded. It needs a path that dips into the reverse
+    reactant state, which a reactive path never does -- run
+    'inft generate_zero_paths' for that one."""
+    import pathlib as pl
+    import shutil
+
+    import numpy as np
+
+    config = read_toml(toml)
+    intfs = config["simulation"]["interfaces"]
+    load_dir = pl.Path(config["simulation"].get("load_dir", "load"))
+    src = pl.Path(path)
+
+    if shift is None:
+        shift = intfs[0] + intfs[-1]
+        print(f"Mirroring the order parameter with shift = {shift}")
+
+    if ens:
+        first, last = (int(i) for i in ens.split(":"))
+    else:
+        # ensemble i uses interfaces[i-1] as its middle interface, so the plus
+        # ensembles are 1 ... len(interfaces)-1
+        first, last = 1, len(intfs) - 1
+
+    # read the forward path and drop the step column of each file. traj.txt is
+    # read by hand because np.loadtxt warns on its comment lines when dtype=str
+    order = np.loadtxt(src / "order.txt", ndmin=2)[::-1, 1:]
+    traj = np.array(
+        [
+            ln.split()
+            for ln in (src / "traj.txt").read_text().splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#")
+        ],
+        dtype=str,
+    )[::-1, 1:]
+    energy = None
+    if (src / "energy.txt").is_file():
+        energy = np.loadtxt(src / "energy.txt", ndmin=2)[::-1, 1:]
+        if len(energy) != len(order):
+            raise ValueError(
+                f"energy.txt has {len(energy)} frames but order.txt has "
+                f"{len(order)} in {src}"
+            )
+    if len(traj) != len(order):
+        raise ValueError(
+            f"traj.txt has {len(traj)} frames but order.txt has "
+            f"{len(order)} in {src}"
+        )
+
+    # mirror the order parameter, keeping the forward value as the last column
+    op = shift - order[:, 0]
+    if keep_op:
+        order = np.column_stack((op, order[:, 1:], order[:, 0]))
+    else:
+        order = np.column_stack((op, order[:, 1:]))
+
+    # the reversed path has to start inside the reverse reactant state and end
+    # in the product state, otherwise it is not valid in the plus ensembles.
+    # infretis does not check initial paths on load, so we check here
+    if not op[0] < intfs[0]:
+        raise ValueError(
+            f"The reversed path starts at {op[0]:.5f}, which is not below "
+            f"interfaces[0] = {intfs[0]}. Check '-shift' and that {src} is a "
+            "reactive path."
+        )
+    if not op[-1] > intfs[-1]:
+        raise ValueError(
+            f"The reversed path ends at {op[-1]:.5f}, which does not reach "
+            f"interfaces[-1] = {intfs[-1]}. Only a reactive path can seed all "
+            "plus ensembles."
+        )
+    print(
+        f"Reversed path: {len(op)} frames, "
+        f"{op[0]:.5f} -> {op[-1]:.5f}, crossing all {len(intfs)} interfaces"
+    )
+
+    # infretis stores velocity reversal per frame, so reversing the path is
+    # just flipping this column
+    fnames, idxs, vels = traj[:, 0], traj[:, 1], -traj[:, 2].astype(int)
+    steps = np.arange(len(order)).reshape(-1, 1)
+
+    for i in range(first, last + 1):
+        dirname = load_dir / str(i)
+        accepted = dirname / "accepted"
+        accepted.mkdir(parents=True, exist_ok=True)
+
+        np.savetxt(
+            str(dirname / "order.txt"),
+            np.hstack((steps, order)),
+            fmt=["%d"] + ["%12.6f"] * order.shape[1],
+        )
+        np.savetxt(
+            str(dirname / "traj.txt"),
+            np.c_[[str(j) for j in range(len(traj))], fnames, idxs, vels],
+            header=f"{'time':>10} {'trajfile':>15} {'index':>10} {'vel':>5}",
+            fmt=["%10s", "%15s", "%10s", "%5s"],
+        )
+        if energy is not None:
+            np.savetxt(
+                str(dirname / "energy.txt"),
+                np.hstack((steps, energy)),
+                fmt=["%d"] + ["%14.6f"] * energy.shape[1],
+            )
+
+        for trajfile in np.unique(fnames):
+            dest = accepted / trajfile
+            if dest.exists() or dest.is_symlink():
+                continue
+            if copy:
+                shutil.copy(src / "accepted" / trajfile, dest)
+            else:
+                dest.symlink_to((src / "accepted" / trajfile).resolve())
+
+    n = last - first + 1
+    how = "copied" if copy else "symlinked"
+    print(f"Seeded ensembles {first}-{last} ({n} dirs) in {load_dir}, frames {how}")
+    print(f"Ensemble 0 ([0-]) was not seeded, use 'inft generate_zero_paths'")
+
+
 def generate_zero_paths(
     conf: Annotated[str, typer.Option("-conf", help="The name (not the path) of the initial configuration to propagate from. inftools will look in the input folder specified in the .toml file.")],
     toml: Annotated[str, typer.Option("-toml",)] = "infretis.toml",

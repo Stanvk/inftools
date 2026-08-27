@@ -355,6 +355,28 @@ def initial_path_from_iretis(
                     out[i] = out[j]
                     print(f"* copied path from ens{j} to ens{i}")
 
+    # Robustness for a recalculated OP: the interfaces are placed from the
+    # recomputed crossing probability, but a path that crossed an interface
+    # under the OP it was *originally* sampled with may no longer do so after
+    # the OP is recomputed -- so the top interface(s) can be unreachable by any
+    # seedable path. Drop those instead of asserting, and persist the trimmed
+    # interface / shooting-move / active set so the run continues consistently.
+    filled = [i for i in range(len(interfaces)) if i in out]
+    k_max = max(filled) if filled else 0
+    if 1 <= k_max < len(interfaces) - 1:
+        dropped = interfaces[k_max:-1]
+        interfaces = interfaces[:k_max] + [interfaces[-1]]
+        sh_m = sh_m[: k_max + 1]
+        out = {i: out[i] for i in range(len(interfaces)) if i in out}
+        print(
+            f"* No seedable path crosses interface(s) {dropped} after the OP "
+            f"recompute; dropping them.\n* New interfaces = {interfaces}"
+        )
+        toml_dict["simulation"]["interfaces"] = interfaces
+        toml_dict["simulation"]["shooting_moves"] = sh_m
+        with open(toml, "wb") as wfile:
+            tomli_w.dump(toml_dict, wfile)
+
     # Check if we have paths in all ensembles
     for i in range(len(interfaces)):
         assert (

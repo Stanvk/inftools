@@ -10,7 +10,7 @@ import pytest
 import tomli
 import tomli_w
 
-from inftools.misc.infinit_helper import read_toml
+from inftools.misc.infinit_helper import read_toml, refresh_datafile_maxop
 
 
 @pytest.mark.heavy
@@ -49,3 +49,51 @@ def test_infinit_1(tmp_path: PosixPath) -> None:
         if i > 1:
             assert num_lines > prev_run_num_lines
         prev_run_num_lines = num_lines
+
+
+def test_refresh_datafile_maxop(tmp_path: PosixPath) -> None:
+    """Test that the data-file max-op column is refreshed from paths."""
+
+    class DummyOrderFunction:
+        def recalculate_order(self, order_vec):
+            return [10.0 * float(order_vec[0]), *order_vec[1:]]
+
+    load_dir = tmp_path / "load"
+    load_dir.mkdir()
+
+    for pnumber, orders in {
+        1: [[1.0, 2.0], [5.0, 3.0]],
+        2: [[2.0, 4.0], [4.0, 1.0]],
+    }.items():
+        pdir = load_dir / str(pnumber)
+        accepted = pdir / "accepted"
+        accepted.mkdir(parents=True)
+        (accepted / "conf0.xyz").write_text("0\n")
+        (accepted / "conf1.xyz").write_text("0\n")
+        (pdir / "traj.txt").write_text(
+            "\n".join(
+                [
+                    "0 conf0.xyz 0 1",
+                    "1 conf1.xyz 1 1",
+                ]
+            )
+            + "\n"
+        )
+        with open(pdir / "order.txt", "w", encoding="utf-8") as fh:
+            for step, order in enumerate(orders):
+                fh.write(f"{step} {order[0]} {order[1]}\n")
+
+    data_file = tmp_path / "infretis_data.txt"
+    data_file.write_text(
+        "# header\n"
+        "1 2 5.0 0.1 0.2 0.3 0.4\n"
+        "2 2 4.0 0.5 0.6 0.7 0.8\n"
+    )
+
+    assert refresh_datafile_maxop(data_file, load_dir, DummyOrderFunction())
+
+    lines = [ln for ln in data_file.read_text().splitlines() if not ln.startswith("#")]
+    cols0 = lines[0].split()
+    cols1 = lines[1].split()
+    assert cols0[2] == "50.000000"
+    assert cols1[2] == "40.000000"
